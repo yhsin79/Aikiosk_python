@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Kiosk</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+
+        h1 {
+            margin-top: 20px;
+        }
+
+        #video_feed {
+            display: block;
+            margin: 20px auto;
+            width: 60vw;    /* 화면 너비의 60% */
+            height: 80vh;   /* 화면 높이의 80% */
+            object-fit: cover;
+            border: 2px solid #444;
+            border-radius: 10px;
+        }
+
+        #coffee-menu {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI Kiosk</h1>
+    <div id="coffee-menu"></div> <!-- 커피 메뉴를 표시할 곳 -->
+
+    <!-- <h2>Video Stream</h2> -->
+    <img id="video_feed" src="{{ url_for('video') }}" width="100%">
+
+    <script>
+        
+        // Flask에서 사람 감지 여부 체크 API 호출
+        /*
+        function checkPersonDetection() {
+            fetch('/detect_person')  // Flask 서버에 요청
+                .then(response => response.json())
+                .then(data => {
+
+                    console.log(data);
+                    if (data.detected) {
+                        //window.location.href = "http://localhost:8080/recommend?coffeeName=아메리카노&coffeeImage=/img/iceAmericano.jpg";
+                    }
+                })
+                .catch(error => console.error('Error detecting person:', error));
+        }
+
+        */
+
+        function checkPersonDetection() {
+        fetch('/detect_person')
+            .then(response => response.json())
+            .then(data => {
+                console.log("Detection Data:", data);
+
+                
+                if (data.detected) {
+                    // 사람이 감지됨
+                    console.log("사람 감지됨!");
+                }
+
+                if (data.match_result === "matched") {
+                    // 얼굴 매칭 성공
+                    const coffeeId = data.match_result.coffee_id;
+                    const count = data.match_result.order_count;
+                    console.log(`추천 커피 ID: ${coffeeId}, 이전 주문 횟수(유사 얼굴 수): ${count}`);
+                    //window.location.href = "http://localhost:8080/recommend?new_face_id?"+data.new_face_id+"&coffeeName=아메리카노&coffeeImage=/img/iceAmericano.jpg";
+                } else if (data.match_result === "not_matched") {
+                    //alert("😕 등록되지 않은 얼굴입니다.");
+                    window.location.href = "http://localhost:8080/?new_face_id="+data.new_face_id;
+                }
+            })
+            .catch(error => console.error('Error detecting person or match:', error));
+        }
+        
+
+        setInterval(checkPersonDetection, 2000); // 2초마다 감지 여부 확인
+   
+       
+    </script>
+</body>
+</html>

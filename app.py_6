@@ -1,0 +1,200 @@
+from flask import Flask, Response, jsonify, render_template
+import face_recognition
+import cv2
+import os
+import json
+from datetime import datetime
+from flask_mysqldb import MySQL
+import time
+from scipy.spatial import distance
+
+from collections import Counter
+
+app = Flask(__name__)
+
+# MySQL 설정
+app.config['MYSQL_HOST'] = 'localhost'
+app.config['MYSQL_PORT'] = 3306  
+app.config['MYSQL_USER'] = 'root'
+app.config['MYSQL_PASSWORD'] = 'cindykangnam1!2@'
+app.config['MYSQL_DB'] = 'aikiosk_db'
+
+mysql = MySQL(app)
+
+# 전역 변수
+check_start_time = None
+person_detected = False
+matched_once = False
+matched_result = None
+new_face_id = None
+
+@app.route('/get_data')
+def get_data():
+    cur = mysql.connection.cursor()
+    cur.execute("SELECT * FROM coffee_menu")
+    data = cur.fetchall()
+    cur.close()
+    return jsonify(data)
+
+@app.route('/detect_person')
+def detect_person():
+    global person_detected, matched_result, new_face_id
+
+    response_data = {
+        'detected': person_detected,
+        'match_result': matched_result,
+        'new_face_id': new_face_id
+    }
+
+    # 한 번만 전달되고 다음엔 초기화되도록 (match_result가 있을 경우에만)
+    if matched_result is not None:
+        matched_result = None
+
+    return jsonify(response_data)
+
+
+
+def gen_frames():
+    global person_detected, matched_once, check_start_time, matched_result, new_face_id
+
+    cap = cv2.VideoCapture(0)
+    inserted = False
+
+    while True:
+        success, frame = cap.read()
+        if not success:
+            break
+
+        face_locations = face_recognition.face_locations(frame)
+        person_detected = len(face_locations) > 0
+
+        if person_detected and not matched_once:
+            if check_start_time is None:
+                check_start_time = time.time()
+
+        elapsed = time.time() - check_start_time if check_start_time else 0
+
+        for (top, right, bottom, left) in face_locations:
+            cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+
+            if not matched_once and elapsed < 3:
+                cv2.putText(frame, "Checking~", (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0, (0, 255, 255), 2)
+
+            elif not matched_once and elapsed >= 3:
+                face_image = frame[top:bottom, left:right]
+                rgb_face_image = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
+                face_encoding = face_recognition.face_encodings(rgb_face_image)
+
+                if face_encoding and not inserted:
+                    print("✅ 얼굴 인코딩 성공")
+                    vector = face_encoding[0]
+                    json_vector = json.dumps(vector.tolist())
+
+                    folder_path = os.path.join("static", "faces")
+                    os.makedirs(folder_path, exist_ok=True)
+                    now = datetime.now()
+                    timestamp_str = now.strftime("%Y%m%d_%H%M%S")
+                    filename = f"face_{timestamp_str}.jpg"
+                    save_path = os.path.join(folder_path, filename)
+                    cv2.imwrite(save_path, face_image)
+                    print(f" 얼굴 이미지 저장됨: {save_path}")
+
+                    try:
+                        with app.app_context():
+                            cur = mysql.connection.cursor()
+                            cur.execute(
+                                "INSERT INTO detected_faces (image_path, detected_time, face_vector) VALUES (%s, %s, %s)",
+                                (save_path, now, json_vector)
+                            )
+                            mysql.connection.commit()
+                            new_face_id = cur.lastrowid
+                            print(f"✅ 얼굴 등록 완료 - ID: {new_face_id}")
+                            cur.close()
+                        inserted = True
+                    except Exception as e:
+                        print("❌ 등록 실패:", e)
+
+                    with app.app_context():
+                        cur = mysql.connection.cursor()
+                        cur.execute("SELECT id, face_vector FROM detected_faces")
+                        rows = cur.fetchall()
+
+                        matched_ids = []
+                        threshold = 0.6
+
+                        for row in rows:
+                            db_id = row[0]
+                            db_vector_json = row[1]
+                            db_vector = json.loads(db_vector_json)
+                            dist = distance.euclidean(vector, db_vector)
+                            if dist < threshold:
+                                matched_ids.append(db_id)
+
+                        print(f"🎯 유사도 통과한 후보들: {matched_ids}")
+
+                        if matched_ids:
+                            format_strings = ','.join(['%s'] * len(matched_ids))
+
+                            # 주문 이력 있는 사용자들 조회
+                            cur.execute(f"""
+                                SELECT DISTINCT face_id 
+                                FROM coffee_order 
+                                WHERE face_id IN ({format_strings})
+                            """, tuple(matched_ids))
+
+                            result = cur.fetchall()
+
+                            if result:
+                                matched_face_ids = [r[0] for r in result]
+
+                                cur.execute(f"""
+                                    SELECT coffee_id
+                                    FROM coffee_order
+                                    WHERE face_id IN ({format_strings})
+                                """, tuple(matched_face_ids))
+
+                                orders = cur.fetchall()
+
+                                if orders:
+                                    coffee_counter = Counter([o[0] for o in orders])
+                                    most_common_coffee_id, _ = coffee_counter.most_common(1)[0]
+
+                                    matched_result = {
+                                        'matched': True,
+                                        'coffee_id': most_common_coffee_id,
+                                        'order_count': len(matched_face_ids)
+                                    }
+                                    print(f"✅ 추천 커피 ID: {most_common_coffee_id}, 주문 횟수: {len(matched_face_ids)}")
+                                else:
+                                    print("😕 주문 이력이 없습니다.")
+                                    matched_result = "not_matched"
+                            else:
+                                print("😕 얼굴 유사자는 있으나 주문 이력이 없음")
+                                matched_result = "not_matched"
+                        else:
+                            print("😕 유사한 얼굴이 없습니다.")
+                            matched_result = "not_matched"
+
+                        matched_once = True
+                        cur.close()
+
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame = buffer.tobytes()
+
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+    cap.release()
+
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/video')
+def video():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+if __name__ == '__main__':
+    app.run('0.0.0.0', port=5001, debug=True)

@@ -1,0 +1,99 @@
+from flask import Flask, render_template, Response, request, jsonify
+import cv2
+import requests  # Spring Boot 호출을 위한 라이브러리
+from flask_mysqldb import MySQL
+import os
+from datetime import datetime
+
+from cvlib.object_detection import draw_bbox
+import cvlib as cv
+
+app = Flask(__name__)
+
+# MySQL 데이터베이스 연결 설정
+app.config['MYSQL_HOST'] = 'localhost'  # MySQL 서버 주소
+app.config['MYSQL_PORT'] = 3306  
+app.config['MYSQL_USER'] = 'root'       # MySQL 사용자명
+app.config['MYSQL_PASSWORD'] = 'cindykangnam1!2@'  # MySQL 비밀번호
+app.config['MYSQL_DB'] = 'aikiosk_db'  # 사용하려는 데이터베이스 이름
+
+mysql = MySQL(app)
+
+# DB에서 커피 메뉴 가져오는 API
+@app.route('/get_data')
+def get_data():
+    cur = mysql.connection.cursor()
+    cur.execute("SELECT * FROM coffee_menu")
+    data = cur.fetchall()
+    cur.close()
+    return jsonify(data)
+
+# OpenCV 얼굴 인식 설정
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+person_detected = False  # 사람 감지 상태 변수
+
+# 딥러닝 기반 사람 인식 함수
+def gen_frames():
+    global person_detected
+    cap = cv2.VideoCapture(0)
+
+    while True:
+        success, frame = cap.read()
+        if not success:
+            break
+
+        # 사람 인식 (cvlib)
+        bbox, labels, conf = cv.detect_common_objects(frame, confidence=0.6, model='yolov4-tiny')
+
+        # 사람(person) 감지되면 처리
+        if 'person' in labels:
+            frame = draw_bbox(frame, bbox, labels, conf, write_conf=True)
+
+            if not person_detected:
+                person_detected = True
+                print("🔹 딥러닝으로 사람 감지됨! Spring Boot 호출 중...")
+
+                try:
+                    requests.get("http://localhost:8080/recommend?coffeeName=아메리카노&coffeeImage=/img/iceAmericano.jpg")
+                except requests.exceptions.RequestException as e:
+                    print(f"❌ Spring Boot 호출 실패: {e}")
+        else:
+            person_detected = False  # 사람이 없는 경우 상태 초기화 가능
+
+        # 프레임 인코딩 및 전송
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame = buffer.tobytes()
+
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+    cap.release()
+
+
+# 메인 페이지
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+# 비디오 스트리밍
+@app.route('/video')
+def video():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+# 감지 여부 확인 API
+@app.route('/detect_person')
+def detect_person():
+    global person_detected
+    return jsonify({'detected': person_detected})
+
+if __name__ == '__main__':  
+    app.run('0.0.0.0', port=5000, debug=True)
+
+#다시 localhost만 접속 가능
+#app.run(host='127.0.0.1', port=5000, debug=True)
+
+
+#http://localhost:5000/
+
+#http://192.168.45.157:5000

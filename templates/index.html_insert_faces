@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Kiosk</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+
+        h1 {
+            margin-top: 20px;
+        }
+
+        #video_feed {
+            display: block;
+            margin: 20px auto;
+            width: 60vw;    /* 화면 너비의 60% */
+            height: 80vh;   /* 화면 높이의 80% */
+            object-fit: cover;
+            border: 2px solid #444;
+            border-radius: 10px;
+        }
+
+        #coffee-menu {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI Kiosk</h1>
+    <div id="coffee-menu"></div>
+
+    <img id="video_feed" src="{{ url_for('video') }}">
+
+    <script>
+        let matched = false;
+
+        function pollMatchResult() {
+            if (matched) return;
+
+            fetch('/match_result')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'matched') {
+                        matched = true;
+                        alert(` 유사도 높은 손님 ID: ${data.matched_id}, 점수: ${data.similarity_score}`);
+                    }
+                })
+                .catch(err => console.error("매칭 체크 에러:", err));
+        }
+
+        setInterval(pollMatchResult, 2000);  // 2초마다 체크
+    </script>
+</body>
+</html>

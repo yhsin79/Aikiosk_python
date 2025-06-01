@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Kiosk</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+
+            background-color: orange; /* 나중에 들어오는 mode에 따라서 바꿀거임*/
+
+        }
+
+        h1 {
+            margin-top: 20px;
+        }
+
+        #video_feed {
+            display: block;
+            margin: 20px auto;
+            width: 60vw;    /* 화면 너비의 60% */
+            height: 80vh;   /* 화면 높이의 80% */
+            object-fit: cover;
+            border: 2px solid #444;
+            border-radius: 10px;
+        }
+
+        #coffee-menu {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI Kiosk</h1>
+    <div id="coffee-menu"></div> <!-- 커피 메뉴를 표시할 곳 -->
+
+    <!-- <h2>Video Stream</h2> -->
+    <img id="video_feed" src="{{ url_for('video') }}" width="100%">
+
+    
+    <script>
+        var intervalId;
+    
+        // 감지 함수 정의
+        function checkPersonDetection() {
+            fetch('/detect_person')
+                .then(response => response.json())
+                .then(function(data) {
+                    console.log("Detection Data:", data);
+    
+                    if (data.detected) {
+                        console.log("사람 감지됨!");
+                    }
+                        
+                    if (data.match_result === "matched") {
+                        clearInterval(intervalId); // 감지 중지
+                        //window.location.href = "http://localhost:8080/recommend?new_face_id=" + data.new_face_id + "&coffeeName=" + data.coffee_name + "&coffeeImage=" + data.coffee_image_url + "&totalOrderCount=" + data.total_order_count+"&coffeeOrderCount="+data.coffee_order_count+"&lastOrderDate="+data.last_order_date+"&lastOrderFaceImage="+data.last_order_face_image + "&coffee_id=" + data.coffee_id;
+                        var safeFaceImage = data.last_order_face_image.replace(/\\/g, "/");
+                        
+                        window.location.href = "http://localhost:8080/recommend?new_face_id=" + encodeURIComponent(data.new_face_id)
+                        + "&coffeeName=" + encodeURIComponent(data.coffee_name)
+                        + "&coffeeImage=" + encodeURIComponent(data.coffee_image_url)
+                        + "&totalOrderCount=" + encodeURIComponent(data.total_order_count)
+                        + "&coffeeOrderCount=" + encodeURIComponent(data.coffee_order_count)
+                        + "&lastOrderDate=" + encodeURIComponent(data.last_order_date)
+                        + "&lastOrderFaceImage=" + encodeURIComponent(safeFaceImage)
+                        + "&coffee_id=" + encodeURIComponent(data.coffee_id);
+                    
+                    } else if (data.match_result === "not_matched") {
+                        clearInterval(intervalId); // 감지 중지
+                        window.location.href = "http://localhost:8080/?new_face_id=" + data.new_face_id;
+                    }
+                })
+                .catch(function(error) {
+                    console.error('Error detecting person or match:', error);
+                });
+        }
+    
+        // 페이지 로드 후 interval 설정
+        window.onload = function() {
+            console.log("페이지 로드됨!");
+    
+            // 이전 intervalId가 있으면 중지
+            if (intervalId) {
+                console.log("기존 intervalId 중지 중...");
+                clearInterval(intervalId);
+            } else {
+                console.log("intervalId가 없어서 중지할 필요 없음.");
+            }
+    
+            // 새로운 interval 설정
+            intervalId = setInterval(checkPersonDetection, 2000); // 2초마다 감지 여부 확인
+            console.log("새로운 intervalId 설정됨:", intervalId);
+        };
+    </script>
+    
+
+</body>
+</html>

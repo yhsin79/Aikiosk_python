@@ -1,0 +1,95 @@
+from flask import Flask, Response, jsonify
+import face_recognition
+import cv2
+import os
+from datetime import datetime
+import requests
+from flask_mysqldb import MySQL
+
+app = Flask(__name__)
+
+# MySQL 설정
+app.config['MYSQL_HOST'] = 'localhost'
+app.config['MYSQL_PORT'] = 3306  
+app.config['MYSQL_USER'] = 'root'
+app.config['MYSQL_PASSWORD'] = 'cindykangnam1!2@'
+app.config['MYSQL_DB'] = 'aikiosk_db'
+
+mysql = MySQL(app)
+
+# 전역 변수
+person_detected = False
+photo_taken = False  # 사진을 이미 찍었는지 여부
+
+@app.route('/get_data')
+def get_data():
+    cur = mysql.connection.cursor()
+    cur.execute("SELECT * FROM coffee_menu")
+    data = cur.fetchall()
+    cur.close()
+    return jsonify(data)
+
+
+def gen_frames():
+    global person_detected, photo_taken
+
+    cap = cv2.VideoCapture(0)  # 웹캠 열기
+
+    while True:
+        success, frame = cap.read()
+        if not success:
+            break
+
+        # 얼굴 위치 탐지 (top, right, bottom, left 순서)
+        face_locations = face_recognition.face_locations(frame)
+
+        # 얼굴 감지 여부 업데이트
+        person_detected = len(face_locations) > 0
+
+        for i, (top, right, bottom, left) in enumerate(face_locations):
+            # 얼굴 주변에 녹색 사각형 그리기
+            cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+
+            # 사진이 아직 찍히지 않았을 때만 저장
+            if not photo_taken:
+                photo_taken = True  # 한 번만 저장하도록 설정
+
+                # 얼굴만 잘라내기
+                face_image = frame[top:bottom, left:right]
+
+                # 저장할 디렉토리 생성
+                folder_path = os.path.join("static", "faces")
+                os.makedirs(folder_path, exist_ok=True)
+
+                # 파일명에 날짜시간 추가
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                save_path = os.path.join(folder_path, f"face_{timestamp}.jpg")
+
+                cv2.imwrite(save_path, face_image)
+                print(f"📸 얼굴 이미지 저장됨: {save_path}")
+
+        # 프레임을 JPEG로 인코딩
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame = buffer.tobytes()
+
+        # MJPEG 포맷으로 클라이언트에 스트리밍
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+    cap.release()
+
+@app.route('/')
+def index():
+    return "<h2>실시간 얼굴 인식 테스트</h2><img src='/video'>"
+
+@app.route('/video')
+def video():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/detect_person')
+def detect_person():
+    global person_detected
+    return jsonify({'detected': person_detected})
+
+if __name__ == '__main__':
+    app.run('0.0.0.0', port=5001, debug=True)
