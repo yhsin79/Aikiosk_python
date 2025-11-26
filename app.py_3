@@ -1,0 +1,138 @@
+from flask import Flask, Response, jsonify, render_template
+import face_recognition
+import cv2
+import os
+import json
+from datetime import datetime
+from flask_mysqldb import MySQL
+import time
+from scipy.spatial import distance  # 유사도 비교용
+
+app = Flask(__name__)
+
+# MySQL 설정
+app.config['MYSQL_HOST'] = 'localhost'
+app.config['MYSQL_PORT'] = 3306  
+app.config['MYSQL_USER'] = 'root'
+app.config['MYSQL_PASSWORD'] = 'cindykangnam1!2@'
+app.config['MYSQL_DB'] = 'aikiosk_db'
+
+mysql = MySQL(app)
+
+# 전역 변수
+check_start_time = None
+person_detected = False
+matched_once = False  # 중복 매칭 방지
+
+matched_result = None  # None, "matched", "not_matched"
+
+@app.route('/get_data')
+def get_data():
+    cur = mysql.connection.cursor()
+    cur.execute("SELECT * FROM coffee_menu")
+    data = cur.fetchall()
+    cur.close()
+    return jsonify(data)
+
+@app.route('/detect_person')
+def detect_person():
+    global person_detected, matched_result
+    result = matched_result
+    matched_result = None  # 결과는 한 번만 사용되도록 초기화
+    return jsonify({
+        'detected': person_detected,
+        'match_result': result  # "matched", "not_matched", None
+    })
+
+def gen_frames():
+    global person_detected, matched_once, check_start_time, matched_result
+
+    cap = cv2.VideoCapture(0)
+
+    while True:
+        success, frame = cap.read()
+        if not success:
+            break
+
+        face_locations = face_recognition.face_locations(frame)
+        person_detected = len(face_locations) > 0
+        #사람을 감지했는지 여부
+        if person_detected and not matched_once:
+            if check_start_time is None:
+                check_start_time = time.time()
+
+        elapsed = time.time() - check_start_time if check_start_time else 0
+
+        for (top, right, bottom, left) in face_locations:
+            cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+
+            # 얼굴 위에 "Checking~" 표시 (3초간)
+            if not matched_once and elapsed < 3:
+                cv2.putText(frame, "Checking~", (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0, (0, 255, 255), 2)
+
+            # 3초 후 얼굴 비교 시작
+            elif not matched_once and elapsed >= 3:
+                face_image = frame[top:bottom, left:right]
+                rgb_face_image = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
+                face_encoding = face_recognition.face_encodings(rgb_face_image)
+
+                if face_encoding:
+                    print("✅ 얼굴 인코딩 성공")
+                    vector = face_encoding[0]
+
+                    with app.app_context():
+                        cur = mysql.connection.cursor()
+                        cur.execute("SELECT id, face_vector FROM detected_faces")
+                        rows = cur.fetchall()
+
+                        min_distance = float('inf')
+                        matched_id = None
+
+                        for row in rows:
+                            db_id = row[0]
+                            db_vector_json = row[1]
+                            db_vector = json.loads(db_vector_json)
+                            dist = distance.euclidean(vector, db_vector)
+
+                            print(f"👤 ID {db_id} 거리: {dist}")
+                            if dist < min_distance:
+                                min_distance = dist
+                                matched_id = db_id
+
+                        if min_distance < 0.6:
+                           
+                            print(f"🎯 일치하는 사용자 ID: {matched_id} (거리: {min_distance:.4f})")
+                            matched_result = "matched"
+                        else:
+                           
+                            print("😕 유사한 얼굴이 없습니다.")
+                            matched_result = "not_matched"
+
+                        matched_once = True
+                        cur.close()
+
+        # 프레임 인코딩
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame = buffer.tobytes()
+
+        # MJPEG 스트리밍 응답
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+    cap.release()
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+    #return "<h2>실시간 얼굴 인식 테스트</h2><img src='/video'>"
+
+@app.route('/video')
+def video():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+
+
+if __name__ == '__main__':
+    app.run('0.0.0.0', port=5001, debug=True)

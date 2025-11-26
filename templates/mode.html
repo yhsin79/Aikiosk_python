@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+   
+    <title>AI Kiosk - 모드 선택</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 100px;
+        }
+        .button-container {
+            display: flex;
+            justify-content: center;
+            gap: 40px; /* 버튼 사이 간격 */
+        }
+        .mode-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .mode-label {
+            font-size: 24px;
+            font-family: 'Malgun Gothic', sans-serif;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        .mode-button {
+            width: 400px;
+            height: 400px;
+            font-size: 28px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            color: white;
+        }
+        .mode-button:hover {
+            transform: scale(1.05);
+        }
+        .latest-mode {
+            background-color: skyblue;
+        }
+        .quick-mode {
+            background-color: orange;
+        }
+    </style>
+    
+</head>
+<body>
+    <h1>모드를 선택하세요</h1>
+    <br><br>
+
+    <div class="button-container">
+        <div class="mode-wrapper">
+            <div class="mode-label">단골이신가요?</div>
+            <form action="/latest_mode" method="get">
+                <button class="mode-button latest-mode" type="submit">🕒최신조회 모드</button>
+            </form>
+        </div>
+
+        <div class="mode-wrapper">
+            <div class="mode-label">기본 조회</div>
+            <form action="/quick_mode" method="get">
+                <button class="mode-button quick-mode" type="submit">✅퀵조회 모드</button>
+            </form>
+        </div>
+    </div>
+
+</body>
+</html>

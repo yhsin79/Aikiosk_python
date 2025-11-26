@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Kiosk</title>
+</head>
+<body>
+    <h1>AI Kiosk</h1>
+    <div id="coffee-menu"></div> <!-- 커피 메뉴를 표시할 곳 -->
+
+    <!-- <h2>Video Stream</h2> -->
+    <img id="video_feed" src="{{ url_for('video') }}" width="100%">
+
+    <script>
+        
+        // Flask에서 사람 감지 여부 체크 API 호출
+        /*
+        function checkPersonDetection() {
+            fetch('/detect_person')  // Flask 서버에 요청
+                .then(response => response.json())
+                .then(data => {
+                    if (data.detected) {
+                        //window.location.href = "http://localhost:8080/recommend?coffeeName=아메리카노&coffeeImage=/img/iceAmericano.jpg";
+                    }
+                })
+                .catch(error => console.error('Error detecting person:', error));
+        }
+
+        setInterval(checkPersonDetection, 2000); // 2초마다 감지 여부 확인
+        */
+
+        let matched = false;
+
+        function pollMatchResult() {
+            if (matched) return;
+
+            fetch('/match_result')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'matched') {
+                        matched = true;  // 중복 호출 방지
+                        alert(` 유사도 높은 손님 ID: ${data.matched_id}, 점수: ${data.similarity_score}`);
+                        // 예: 페이지 이동도 가능
+                        // window.location.href = `/recommend?id=${data.matched_id}`;
+                    }
+                })
+                .catch(err => console.error("매칭 체크 에러:", err));
+        }
+
+        setInterval(pollMatchResult, 2000);  // 2초마다 체크
+
+    </script>
+</body>
+</html>

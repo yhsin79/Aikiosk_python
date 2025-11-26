@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Kiosk</title>
+</head>
+<body>
+    <h1>AI Kiosk</h1>
+    <div id="coffee-menu"></div> <!-- 커피 메뉴를 표시할 곳 -->
+
+    <!-- <h2>Video Stream</h2> -->
+    <img id="video_feed" src="{{ url_for('video') }}" width="100%">
+
+    <script>
+        
+        // Flask에서 사람 감지 여부 체크 API 호출
+        /*
+        function checkPersonDetection() {
+            fetch('/detect_person')  // Flask 서버에 요청
+                .then(response => response.json())
+                .then(data => {
+                    if (data.detected) {
+                        //window.location.href = "http://localhost:8080/recommend?coffeeName=아메리카노&coffeeImage=/img/iceAmericano.jpg";
+                    }
+                })
+                .catch(error => console.error('Error detecting person:', error));
+        }
+
+        setInterval(checkPersonDetection, 2000); // 2초마다 감지 여부 확인
+        */
+       
+    </script>
+</body>
+</html>
